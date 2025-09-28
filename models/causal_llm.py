@@ -19,7 +19,8 @@ class TransformerLM(nn.Module):
         self.token_embed = Embedding(self.vocab_size, self.d_model, device = device, dtype = dtype)
         self.rope_module = RotaryPositionalEmbedding(theta = config.theta,
                                                      d_head=config.d_model//config.transformer.attn.n_heads,
-                                                     context_length=self.context_length)
+                                                     context_length=self.context_length,
+                                                     device = device)
         
         self.decoder = Decoder(config, rope_module = self.rope_module, device= device, dtype = dtype)
         

@@ -259,7 +259,7 @@ class MultiHeadSelfAttention(nn.Module):
 
         if self.use_causal_mask:
             mask = torch.triu(torch.ones((context_length, context_length), dtype=bool), diagonal=1)
-            self.register_buffer("causal_mask", mask.view(1, 1, context_length, context_length))
+            self.register_buffer("causal_mask", mask.view(1, 1, context_length, context_length).to(device = device))
 
         self.qkv_proj = Linear(
             in_features=self.d_model,
@@ -299,7 +299,7 @@ class MultiHeadSelfAttention(nn.Module):
 #### POSITIONAL EMBEDDING LAYERS
 class RotaryPositionalEmbedding(nn.Module):
 
-    def __init__(self, theta: float, d_head: int, context_length: int):
+    def __init__(self, theta: float, d_head: int, context_length: int, device=None):
         super().__init__()
         self.theta = theta
         self.d_head = d_head  # This is the dimnesio
@@ -310,16 +310,16 @@ class RotaryPositionalEmbedding(nn.Module):
         freq_array = freq_array[:, None].repeat(1, 2).reshape(-1)
         all_thetas = einsum(pos_array, freq_array, "s, d -> s d")
 
-        self.register_buffer("cos_theta", torch.cos(all_thetas).view(1, context_length, self.d_head), 
+        self.register_buffer("cos_theta", torch.cos(all_thetas).view(1, context_length, self.d_head).to(device = device), 
                              persistent=False)
-        self.register_buffer("sin_theta", torch.sin(all_thetas).view(1, context_length, self.d_head), 
+        self.register_buffer("sin_theta", torch.sin(all_thetas).view(1, context_length, self.d_head).to(device = device), 
                              persistent=False)
 
         flip_matrix = torch.diagflat(-torch.ones(1,),offset=1)
         flip_matrix += torch.diagflat(torch.ones(1,),offset=-1)
 
         self.register_buffer("flip_matrix", 
-                            torch.block_diag(*flip_matrix[None, :, :].expand(self.d_head // 2, -1, -1)),
+                            torch.block_diag(*flip_matrix[None, :, :].expand(self.d_head // 2, -1, -1).to(device = device)),
                             persistent=False)
 
     def forward(self, input: torch.tensor, token_positions: torch.tensor):
