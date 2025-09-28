@@ -88,7 +88,7 @@ class Embedding(nn.Module):
     def _initialize(self):
         torch.nn.init.trunc_normal_(self.weight, 0.0, std=1.0, a=-3, b=3)
 
-    def forward(self, ids):
+    def forward(self, ids: torch.LongTensor):
         # ids could either be position or token ids
         return self.weight[ids]
 

@@ -1,13 +1,17 @@
 import torch
 import torch.nn as nn
-from ..layers import Embedding, Linear, RotaryPositionalEmbedding
-from ..blocks import Decoder
-from ..config import DecoderLMConfigTest
+from src.mintransformer.layers import Embedding, Linear, RotaryPositionalEmbedding
+from src.mintransformer.blocks import Decoder
+from src.mintransformer.config import DecoderLMConfig
 
 class TransformerLM(nn.Module):
-    def __init__(self, config: DecoderLMConfigTest,
+    def __init__(self, config: DecoderLMConfig,
                  device = None, dtype = None):
         super().__init__()
+
+        if not torch.cuda.is_available() and "cuda" in device:
+            raise RuntimeError("Cuda not found. Pleae set device = cpu")
+        
         self.d_model = config.d_model
         self.context_length = config.context_length
         self.vocab_size = config.vocab_size
