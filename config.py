@@ -72,5 +72,57 @@ class DecoderLMConfigTest(ArchitectureConfig):
     pos_embedding_type: PositionEmbeddingType = "rope"
     dropout: float = 0.0
     share_embed_lmhead_wts: bool = False
+
+
+@dataclass
+class DecoderLMConfig(ArchitectureConfig):
+    d_model: int = 512
+    theta: float = 10000.0
+    n_layers: int = 4
+    vocab_size: int = 50257
+    context_length: int = 256
+    pos_embedding_type: PositionEmbeddingType = "rope"
+    share_embed_lmhead_wts: bool = True
+    dropout: float = 0.1
+    transformer: Optional[TransformerConfig] = None 
+
+    def __post_init__(self):
+        if self.transformer is None:
+
+            self.transformer = TransformerConfig(norm_position="pre",
+                                                 norm_type = "rms",
+                                                 use_causal_mask=True,
+                                                 ln_bias = False,
+                                                 ffn = FFNConfig(
+                                                 is_gated=True,
+                                                 activation = "silu",
+                                                 bias = False),
+                                                 attn = SelfAttentionConfig(
+                                                 n_heads=16,
+                                                 bias = False))
         
+
+@dataclass
+class TrainingConfig:
+    learning_rate: float = 2e-5
+    weight_decay: float = None
+    beta1: float = 0.90,   # taken from LLama
+    beta2: float = 0.95,   # taken from LLama
+    num_iterations: int = 2500
+    batch_size: int = 512
+    resume_from_checkpoint: str = None
+    reset_scheduler_on_load: bool = False
+    eval_every_n_steps: int = 100
+    min_lr: float = 0.0001
+    num_warmup_steps: int = 250
+    num_cosine_steps: int = 2000
+    max_grad_norm: float = 1.0
+        
+@dataclass
+class RunConfig:
+    model:DecoderLMConfig = field(default_factory=DecoderLMConfig)
+    train:TrainingConfig = field(default_factory=TrainingConfig)
+    data_dir:str = f"./src/mintransformer/data/tokenized"
+    ckpt_dir:str = f"./src/mintransformer/checkpoints"
+
 
