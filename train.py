@@ -186,7 +186,6 @@ class Trainer:
                            "train/learning_rate": self.optimizer.param_groups[0]['lr'],
                            "train/perplexity": math.exp(batch_loss.item()),
                            "gradients/norm_before_clip":total_grad_norm,
-                           'gradients/clipped': total_grad_norm > self.config.train.max_grad_norm,
                            "memory/gpu_gb":torch.cuda.memory_allocated()/1024**3}, step=self.global_step)
                 
             clip_grad_norm_(self.model.parameters(),self.config.train.max_grad_norm)
@@ -244,7 +243,7 @@ class Trainer:
         
         print("Training complete.")
         print("\n" + "=" * 60)
-        _ = self.load_best_model(self.config.ckpt_dir)
+        _ = self.load_best_model(os.path.join(self.config.ckpt_dir,f"run-{self.run_id}_best_model.pth"))
         print("Performing Final evaluation")
         final_eval_results = self._evaluate()
         final_perplexity = final_eval_results["avg_perplexity"]
@@ -554,11 +553,11 @@ if __name__ == "__main__":
                         help="frequency at which to evaluate")
     
     parser.add_argument( "--frac_warmup_steps", type=float, 
-                        default=0.1, 
+                        default=0.05, 
                         help="fraction of traning steps to use for warmup")
     
     parser.add_argument( "--frac_cosine_steps", type=float, 
-                        default=0.8, 
+                        default=0.95, 
                         help="fraction of traning steps to use for warmup + cosine rate scheduling")
     
     parser.add_argument( "--d_model", type=int, 
