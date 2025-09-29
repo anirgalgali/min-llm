@@ -109,6 +109,7 @@ class TrainingConfig:
     beta1: float = 0.90,   # taken from LLama
     beta2: float = 0.95,   # taken from LLama
     num_iterations: int = 2500
+    patience_threshold: int = 3
     batch_size: int = 512
     resume_from_checkpoint: str = None
     reset_scheduler_on_load: bool = False

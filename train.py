@@ -37,9 +37,11 @@ class Trainer:
         self.scheduler = lr_scheduler
         self.config = config
         self.do_log = do_log
-        # USE - batch_size = 512, context_length = 256, num_iterations = 2500
+        # USE - batch_size = 64, context_length = 256, num_iterations = 20000
 
-
+        self.patience_counter = 0
+        self.best_iteration = 0
+        self.patience_threshold = config.train.patience_threshold
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
 
@@ -102,50 +104,68 @@ class Trainer:
                 total_loss += val_loss.item()
                 total_tokens += target_ids.numel()  
             avg_loss_per_token = total_loss/total_tokens      
-            results = {"avg_perplexity": math.exp(avg_loss_per_token)}
+            results = {"avg_perplexity": math.exp(avg_loss_per_token), "avg_val_loss": avg_loss_per_token}
 
         return results
 
-    def _save_checkpoint(self, current_perpelxity: float, checkpoint_path: str):
+    def _save_checkpoint(self, checkpoint_path: str):
 
-        if current_perpelxity < self.best_perplexity :
+        print(f" Saving model ckpt to : {checkpoint_path}")
+        checkpoint = {
+            "global_step": self.global_step,
+            "best_perplexity": self.best_perplexity,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "run_id": self.run_id,
+        }
 
-            self.best_perplexity  = current_perpelxity
-            print(f"New best perpelxity: {self.best_perplexity:.4f}. Saving model checkpoint..."
-            )
-            checkpoint = {
-                "global_step": self.global_step,
-                "best_perplexity": self.best_perplexity,
-                "model_state_dict": self.model.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-                "scheduler_state_dict": self.scheduler.state_dict(),
-                "run_id": self.run_id,
-            }
-
-            torch.save(
-                checkpoint, f"{checkpoint_path}/run-{self.run_id}_best_model.pth"
-            )
+        torch.save(
+            checkpoint, f"{checkpoint_path}/run-{self.run_id}_best_model.pth"
+        )
 
     def load_from_checkpoint(self, checkpoint_path: str):
-        print(f" Loading ckpt from : {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-        if not self.config.train.reset_scheduler_on_load:
-            print(f"Scheduler state loaded from checkpoint.")
-            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        if os.path.exists(checkpoint_path):
+            print(f" Loading ckpt from : {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+            if not self.config.train.reset_scheduler_on_load:
+                print(f"Scheduler state loaded from checkpoint.")
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            else:
+                print(f"Scheduler state NOT loaded. A new scheduler will be used.")
+
+            self.global_step = checkpoint["global_step"]+1
+            self.best_perplexity = checkpoint["best_perplexity"]
+            self.run_id = checkpoint["run_id"]
+            print(f"Resuming training from iteration {self.global_step}")
+        
         else:
-            print(f"Scheduler state NOT loaded. A new scheduler will be used.")
+            
+            print(f"No checkpoint found at {checkpoint_path}")
+            return None
 
-        self.global_step = checkpoint["global_step"]+1
-        self.best_perplexity = checkpoint["best_perplexity"]
-        self.run_id = checkpoint["run_id"]
-        print(f"Resuming training from iteration {self.global_step}")
 
+    def load_best_model(self, checkpoint_path: str):
+        if os.path.exists(checkpoint_path):
+            print(f" Loading ckpt from : {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            print(f"Loaded best model weights from iteration {checkpoint['global_step']}")
+            print(f"Best validation perplexity: {checkpoint['best_perplexity']:.4f}")
+            return checkpoint
+        else:
+            print(f"No checkpoint found at {checkpoint_path}")
+            return None
+
+        
     def train(self):
 
         print(f" Starting training...")
+        early_stopped = False
         for i in range(self.config.train.num_iterations):
             self.model.train()
             batch = next(self.train_dataloader)
@@ -164,6 +184,7 @@ class Trainer:
             if self.do_log:
                 wandb.log({"train/batch_loss": batch_loss.item(),
                            "train/learning_rate": self.optimizer.param_groups[0]['lr'],
+                           "train/perplexity": math.exp(batch_loss.item()),
                            "gradients/norm_before_clip":total_grad_norm,
                            'gradients/clipped': total_grad_norm > self.config.train.max_grad_norm,
                            "memory/gpu_gb":torch.cuda.memory_allocated()/1024**3}, step=self.global_step)
@@ -171,38 +192,97 @@ class Trainer:
             clip_grad_norm_(self.model.parameters(),self.config.train.max_grad_norm)
 
             self.optimizer.step()
-            self.scheduler.step()
-                
+            self.scheduler.step() 
             self.global_step += 1
 
+            print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()}")
 
             if self.global_step % self.config.train.eval_every_n_steps == 0:
 
                 print(f"--- Intra-epoch eval at step {self.global_step}---")
+
                 eval_results = self._evaluate()
                 
                 if self.do_log: 
                     wandb.log({"val/avg_perplexity": eval_results["avg_perplexity"],
-                        },
+                               "val/avg_loss_per_token": eval_results["avg_val_loss"]},
                         step=self.global_step)
 
-                print(
-                    f"Iteration-{self.global_step}: train_loss={batch_loss.item()}, avg_val_perp={eval_results['avg_perplexity']}"
-                )
-                self._save_checkpoint(
-                    eval_results['avg_perplexity'],self.config.ckpt_dir)
-            
-            print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()}")
+                print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()},\
+                        val_loss={eval_results['avg_val_loss']}")
+                
+                if eval_results['avg_perplexity'] < self.best_perplexity :
+                    perplexity_improvement = eval_results['avg_perplexity'] - self.best_perplexity
+                    self.best_perplexity  = eval_results['avg_perplexity']
+                    self.best_iteration = self.global_step
+                    self.patience_counter = 0
+                    
+                    print(f"New best perpelxity: {self.best_perplexity:.4f}.")
+                    self._save_checkpoint(self.config.ckpt_dir)
+                    if self.do_log: 
+                        wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
+                               "early_stopping/best_iteration": self.best_iteration,
+                               "early_stopping/patience_counter": self.patience_counter,
+                               "early_stopping/improvement": perplexity_improvement},
+                            step=self.global_step)
+
+                else:
+
+                    self.patience_counter += 1
+                    print(f"No improvement. Patience: {self.patience_counter}/{self.patience_threshold}")
+                    if self.do_log:                                            
+                        wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
+                               "early_stopping/best_iteration": self.best_iteration,
+                               "early_stopping/patience_counter": self.patience_counter},
+                            step=self.global_step)
+                        
+                    if self.patience_counter >= self.patience_threshold:
+                        print(f" Early stopping triggered at iteration {self.global_step}")
+                        print(f" Best validation perplexity of {self.best_perplexity} at iteration {self.best_iteration}")
+                        early_stopped = True
+                        break  
         
         print("Training complete.")
-        print("Final evaluation")
-
+        print("\n" + "=" * 60)
+        _ = self.load_best_model(self.config.ckpt_dir)
+        print("Performing Final evaluation")
         final_eval_results = self._evaluate()
-        self._save_checkpoint(final_eval_results['avg_perplexity'],
-                              self.config.ckpt_dir)
+        final_perplexity = final_eval_results["avg_perplexity"]
+        final_avg_val_loss_per_token = final_eval_results["avg_val_loss"]
 
+        print(f"\nFinal Model Performance:")
+        print(f"  Validation Perplexity: {final_perplexity:.4f}")
+        print(f"  Validation Loss: {final_avg_val_loss_per_token:.4f}")
+        print(f"  From Iteration: {self.best_iteration}")
+
+        perplexity_diff = abs(final_perplexity - self.best_perplexity)
+        if perplexity_diff > 0.01: # check 
+            print(f"WARNING: Final perplexity ({final_perplexity:.4f}) differs from "
+                f"saved best perplexity ({self.best_perplexity:.4f})")
+        else:
+            print(f"Final perplexity matches saved best checkpoint")
+            if self.do_log:   
+                wandb.run.summary["final/val_perplexity"] = final_perplexity
+                wandb.run.summary["final/val_loss"] = final_avg_val_loss_per_token 
+                wandb.run.summary["best_iteration"] = self.best_iteration
+                wandb.run.summary["total_iterations"] = self.global_step
+
+
+        if early_stopped:
+            print(f"Training stopped early at iteration {self.global_step}")
+            if self.do_log:
+                wandb.run.summary["early_stopped"] = True
+                wandb.run.summary["stopped_at_iteration"] = self.global_step
+        else:
+            print("Training completed all iterations")
+            if self.do_log:
+                wandb.run.summary["early_stopped"] = False
+           
+        print("=" * 60)
         if self.do_log:
             wandb.finish()
+
+        return self.model, final_eval_results
 
     def train_single_batch(self, X, y):
         # This function is purely for debugging purposes. 
@@ -240,6 +320,7 @@ def run(args):
                                   beta1 = args.beta1,
                                   beta2 = args.beta2,
                                   num_iterations=args.num_iters,
+                                  patience_threshold=args.patience_threshold,
                                   batch_size = args.batch_size,
                                   resume_from_checkpoint=args.resume_from_ckpt,
                                   reset_scheduler_on_load = args.reset_sched_on_load,
@@ -318,7 +399,7 @@ def run(args):
         val_dataloader=val_loader,
         config=config)
 
-    trainer.train()
+    final_model, final_eval_results = trainer.train()
 
 
 def run_test(args):
@@ -453,6 +534,10 @@ if __name__ == "__main__":
                         default=2500, 
                         help="number of training iterations")
     
+    parser.add_argument( "--patience_threshold", type=int, 
+                    default=3, 
+                    help="patience for early stopping")
+    
     parser.add_argument( "--batch_size", type=int,
                         default=512, 
                         help="minibatch size for training")
@@ -518,5 +603,4 @@ if __name__ == "__main__":
     
 
     args = parser.parse_args()
-    print("Parsed args")
     run(args)
