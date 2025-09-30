@@ -4,4 +4,4 @@ checkpoints/*
 !data/.gitkeep
 !checkpoints/.gitkeep
 *.egg-info
-__pycache__
+__pycache__/
