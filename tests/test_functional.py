@@ -1,6 +1,6 @@
 import numpy
 import torch
-from .functional import gelu,silu,softmax
+from min_llm.functional import gelu,silu,softmax
 import torch.nn.functional as F
 
 def test_gelu():

@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from src.mintransformer.layers import Embedding, Linear, RotaryPositionalEmbedding
-from src.mintransformer.blocks import Decoder
-from src.mintransformer.config import DecoderLMConfig
+from min_llm.layers import Embedding, Linear, RotaryPositionalEmbedding
+from min_llm.blocks import Decoder
+from min_llm.config import DecoderLMConfig
 
 class TransformerLM(nn.Module):
     def __init__(self, config: DecoderLMConfig,

@@ -2,7 +2,7 @@ from einops import rearrange
 import numpy
 import torch
 import torch.nn.functional as F
-from .layers import (
+from min_llm.layers import (
     Linear,
     Embedding,
     RMSNorm,
@@ -11,8 +11,8 @@ from .layers import (
     MultiHeadSelfAttention,
     RotaryPositionalEmbedding,
 )
-from .functional import SiLU, scaled_dot_product_attention
-from .config import SelfAttentionConfig, FFNConfig
+from min_llm.functional import SiLU, scaled_dot_product_attention
+from min_llm.config import SelfAttentionConfig, FFNConfig
 
 def test_linear(numpy_snapshot, ts_state_dict, in_embeddings, d_model, d_ff):
     w1_weight = ts_state_dict[0]["layers.0.ffn.w1.weight"]

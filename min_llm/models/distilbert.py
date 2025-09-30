@@ -1,10 +1,10 @@
 from typing import Optional
 import torch
 import torch.nn as nn
-from ..layers import Embedding, Linear, LayerNorm
-from ..functional import GeLU, SiLU
-from ..blocks import Encoder
-from ..config import DistilBERTConfig
+from min_llm.layers import Embedding, Linear, LayerNorm
+from min_llm.functional import GeLU, SiLU
+from min_llm.blocks import Encoder
+from min_llm.config import DistilBERTConfig
 
 
 class DistilBERT(nn.Module):

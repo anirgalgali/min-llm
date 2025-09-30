@@ -17,7 +17,7 @@ def get_batch(x: np.array,
         start_indices = rng.choice(len(x) - context_length, size = (batch_size,), replace = False)
         offsets = np.arange(context_length)
         indices = start_indices[:,np.newaxis] + offsets 
-        yield torch.from_numpy(x[indices]).long().to(device), torch.from_numpy(x[indices + 1]).long().to(device),torch.from_numpy(indices)
+        yield torch.from_numpy(x[indices]).long().to(device), torch.from_numpy(x[indices + 1]).long().to(device)
 
     
 class SequenceDataset(Dataset):
