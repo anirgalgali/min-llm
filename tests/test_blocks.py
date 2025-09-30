@@ -1,13 +1,13 @@
 import torch
 import torch.nn.functional as F
-from src.mintransformer.blocks import TransformerBlock
-from src.mintransformer.layers import RotaryPositionalEmbedding
-from src.mintransformer.utils import (
+from .blocks import TransformerBlock
+from .layers import RotaryPositionalEmbedding
+from .utils import (
     state_dict_mapper_tests_transformerblock,
     state_dict_mapper_tests_transformerlm
 )
-from src.mintransformer.config import TransformerConfig, DecoderLMConfigTest, FFNConfig, SelfAttentionConfig
-from src.mintransformer.models.causal_llm import TransformerLM
+from .config import TransformerConfig, DecoderLMConfigTest, FFNConfig, SelfAttentionConfig
+from .models.causal_llm import TransformerLM
 
 def test_transformer_block(numpy_snapshot, ts_state_dict, in_embeddings, d_model, n_heads, d_ff, n_keys, theta):
 

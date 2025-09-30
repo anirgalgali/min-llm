@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 from typing import Optional
 from einops import rearrange, einsum
-from src.mintransformer.functional import scaled_dot_product_attention, SiLU, GeLU
+from .functional import scaled_dot_product_attention, SiLU, GeLU
 from collections import OrderedDict
 from . import config
 

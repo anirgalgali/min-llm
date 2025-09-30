@@ -2,7 +2,7 @@ import math
 from collections import Counter
 import numpy as np
 import pytest
-from src.mintransformer.data import get_batch
+from .data import get_batch
 
 def test_get_batch():
     dataset = np.arange(0, 100)

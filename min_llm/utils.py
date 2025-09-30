@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
-from src.mintransformer.blocks import TransformerBlock
-from src.mintransformer.models.causal_llm import TransformerLM
-from src.mintransformer.models.distilbert import DistilBERT
-from src.mintransformer.config import ArchitectureConfig, TransformerConfig, SelfAttentionConfig, FFNConfig
+from .blocks import TransformerBlock
+from .models.causal_llm import TransformerLM
+from .models.distilbert import DistilBERT
+from .config import ArchitectureConfig, TransformerConfig, SelfAttentionConfig, FFNConfig
 import os
 
 def keymap_for_transformerblock_testfixture(dest_keys: list, source_keys: list):

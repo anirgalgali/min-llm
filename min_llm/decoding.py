@@ -1,7 +1,7 @@
 import torch
 from torch.distributions.categorical import Categorical
-from src.mintransformer.models.causal_llm import TransformerLM
-from src.mintransformer.functional import softmax
+from .models.causal_llm import TransformerLM
+from .functional import softmax
 class Decoder:
 
     def __init__(self, tokenizer, temperature = 1.0, top_p = None, device = None):

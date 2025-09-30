@@ -5,15 +5,15 @@ import pprint
 import numpy as np
 import torch
 from torch.nn.functional import cross_entropy
-from src.mintransformer.config import SelfAttentionConfig, TransformerConfig,DecoderLMConfig, RunConfig, TrainingConfig
-from src.mintransformer.models.causal_llm import TransformerLM
+from .config import SelfAttentionConfig, TransformerConfig,DecoderLMConfig, RunConfig, TrainingConfig
+from .models.causal_llm import TransformerLM
 from torch.utils.data import DataLoader
 from torch.optim import Optimizer, AdamW
 from torch.nn.utils import clip_grad_norm_
 from torch.optim.lr_scheduler import LRScheduler
 # from torchmetrics.text import Perplexity
-from src.mintransformer.data import get_batch, SequenceDataset
-from src.mintransformer.scheduler import get_cosine_schedule_with_warmup
+from .data import get_batch, SequenceDataset
+from .scheduler import get_cosine_schedule_with_warmup
 from tqdm.auto import tqdm
 import wandb
 
