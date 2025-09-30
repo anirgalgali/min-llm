@@ -3,3 +3,5 @@ wandb/*
 checkpoints/*
 !data/.gitkeep
 !checkpoints/.gitkeep
+*.egg-info
+__pycache__
