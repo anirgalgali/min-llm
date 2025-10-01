@@ -187,7 +187,7 @@ class Trainer:
 
 
     def _load_best_model(self):
-        checkpoint_path = self.exp_dir / "checkpoints" 
+        checkpoint_path = self.exp_dir / "checkpoints"/"best_model.pth" 
         if os.path.exists(checkpoint_path):
             print(f" Loading ckpt from : {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
