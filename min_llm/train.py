@@ -7,10 +7,12 @@ from torch.utils.data import DataLoader
 from torch.optim import Optimizer, AdamW
 from torch.nn.utils import clip_grad_norm_
 from torch.optim.lr_scheduler import LRScheduler
+from transformers import AutoTokenizer
 from .config import SelfAttentionConfig, TransformerConfig,DecoderLMConfig, RunConfig, TrainingConfig
 from .models.causal_llm import TransformerLM
 from .data import get_batch, SequenceDataset
 from .scheduler import get_cosine_schedule_with_warmup
+from .decoding import TextDecoder
 from tqdm.auto import tqdm
 import wandb
 
@@ -23,6 +25,7 @@ class Trainer:
         lr_scheduler: LRScheduler,
         train_dataloader:callable,
         val_dataloader:DataLoader,
+        decoder: TextDecoder,
         config: RunConfig,
         do_log = True):
 
@@ -32,6 +35,7 @@ class Trainer:
 
         self.optimizer = optimizer
         self.scheduler = lr_scheduler
+        self.decoder = decoder
         self.config = config
         self.do_log = do_log
         # USE - batch_size = 64, context_length = 256, num_iterations = 20000
@@ -157,7 +161,35 @@ class Trainer:
         else:
             print(f"No checkpoint found at {checkpoint_path}")
             return None
+        
+    def _generate_and_log_samples(self, step, max_tokens = 200):
 
+        self.model.eval()
+        prompts = ["Once upon a time",
+                   "There once was a little boy",
+                   "In a magical land far, far away"]
+        
+        sampled_text = f"=== Step {step} ===\n\n"
+        log_samples = []
+
+        for prompt in prompts:
+            generated = self.decoder.generate(self.model, prompt, max_tokens)
+            sample_text = f"Prompt: {prompt}\nGenerated: {generated}\n\n"
+            sampled_text += sample_text
+            log_samples.append([step, prompt, generated])
+
+        table = wandb.Table(
+        columns=["Step", "Prompt", "Generated"],
+        data=log_samples)
+
+        wandb.log({"samples": table, "step": step})
+    
+        if step % 2500 == 0 or step == self.config.train.num_iterations:
+            sample_file = self.exp_dir / "samples" / f"step_{step}.txt"
+            with open(sample_file, 'w') as f:
+                f.write(sampled_text)
+        
+        self.model.train()
         
     def train(self):
 
@@ -360,7 +392,9 @@ def train_model(args):
             lr=config.train.learning_rate,
             betas = (config.train.beta1, config.train.beta2))
 
-
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
+    decoder = TextDecoder(tokenizer = tokenizer, temperature = args.temperature,
+                           top_p = args.top_p, device = "cuda:0")
 
     lr_scheduler = get_cosine_schedule_with_warmup(optimizer,
                                                    max_lr = train_config.learning_rate,
@@ -374,6 +408,7 @@ def train_model(args):
         lr_scheduler = lr_scheduler,
         train_dataloader=train_loader,
         val_dataloader=val_loader,
+        decoder = decoder,
         config=config)
 
     final_model, final_eval_results = trainer.train()

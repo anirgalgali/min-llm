@@ -2,7 +2,7 @@ import torch
 from torch.distributions.categorical import Categorical
 from .models.causal_llm import TransformerLM
 from .functional import softmax
-class Decoder:
+class TextDecoder:
 
     def __init__(self, tokenizer, temperature = 1.0, top_p = None, device = None):
 
@@ -27,7 +27,7 @@ class Decoder:
         return prob_dist
 
 
-    def decode(self, model:TransformerLM,
+    def generate(self, model:TransformerLM,
                input_prompt:str, max_tokens = 200):
 
         input_ids = torch.tensor(self.tokenizer.encode(input_prompt)).long().to(self.device)

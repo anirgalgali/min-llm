@@ -13,7 +13,7 @@ def main():
                         help="Directory to store model checkpoints.")
     
     parser.add_argument( "--lr", type=float, 
-                        default=0.0005, 
+                        default=0.001, 
                         help="max learning rate")
     
     parser.add_argument( "--weight_decay", type=float, 
@@ -37,7 +37,7 @@ def main():
                         help="patience for early stopping")
     
     parser.add_argument( "--batch_size", type=int,
-                        default=512, 
+                        default=64, 
                         help="minibatch size for training")
     
     parser.add_argument( "--resume_from_ckpt", type=str, 
@@ -58,6 +58,18 @@ def main():
     parser.add_argument( "--frac_cosine_steps", type=float, 
                         default=0.95, 
                         help="fraction of traning steps to use for warmup + cosine schedule")
+    
+    parser.add_argument("--tokenizer_name",type=str, 
+                        default="openai-community/gpt2", 
+                        help="Name of the Hugging Face tokenizer to use.")
+    
+    parser.add_argument("--temperature",type=float, 
+                    default=1.0, 
+                    help="Temperature for sotfmax sampling of text")
+    
+    parser.add_argument("--top_p",type=float, 
+                default=0.1, 
+                help="cdf threshold for nucleus sampling")
     
     parser.add_argument( "--d_model", type=int, 
                         default=512, 
