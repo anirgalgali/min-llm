@@ -1,7 +1,12 @@
 import os
+import yaml
+from datetime import datetime
+import time
 import math
 import numpy as np
+from pathlib import Path
 import torch
+from dataclasses import asdict
 from torch.nn.functional import cross_entropy
 from torch.utils.data import DataLoader
 from torch.optim import Optimizer, AdamW
@@ -26,8 +31,7 @@ class Trainer:
         train_dataloader:callable,
         val_dataloader:DataLoader,
         decoder: TextDecoder,
-        config: RunConfig,
-        do_log = True):
+        config: RunConfig):
 
         self.model = model
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -37,55 +41,82 @@ class Trainer:
         self.scheduler = lr_scheduler
         self.decoder = decoder
         self.config = config
-        self.do_log = do_log
+
         # USE - batch_size = 64, context_length = 256, num_iterations = 20000
 
-        self.patience_counter = 0
-        self.best_iteration = 0
         self.patience_threshold = config.train.patience_threshold
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
-
-
+        self.resume_from_checkpoint = config.resume_from_checkpoint
+        self.dataset_name = config.data_dir.split('/')[-1]
         self.run_id = None
-        self.global_step = 0
-        self.best_perplexity = float('inf')
+        self._setup_experiment()
 
-        if self.config.train.resume_from_checkpoint:
-            ckpt_path = self.config.train.resume_from_checkpoint
-            self.load_from_checkpoint(ckpt_path)
+    def _setup_experiment(self):
 
-        if do_log:
+        if self.resume_from_checkpoint:
+            
+            ckpt_path = self.resume_from_checkpoint
+            self._load_checkpoint(ckpt_path)
 
             wandb.init(
                 project="mintransformer",
-                entity=os.getenv("WANDB_ENTITY"),
                 id=self.run_id,
-                resume="allow",
-                config={
-                    "learning_rate": self.config.train.learning_rate,
-                    "weight_decays": self.config.train.weight_decay,
-                    "betas": (self.config.train.beta1, self.config.train.beta2),
-                    "iterations": self.config.train.num_iterations,
-                    "batch_size": self.config.train.batch_size,
-                    "d_model": self.config.model.d_model,
-                    "context_length": self.config.model.context_length,
-                    "vocab_size": self.config.model.vocab_size,
-                    "n_heads": self.config.model.transformer.attn.n_heads,
-                    "dropout": self.config.model.dropout,
-                    "dropout_attn": self.config.model.transformer.attn.dropout_attn,
-                    "rope_theta": self.config.model.theta,
-                    "n_layers": self.config.model.n_layers,
-                    "num_warmup_steps": self.config.train.num_warmup_steps,
-                    "num_cosine_steps": self.config.train.num_cosine_steps,
-
-                },
+                resume="must",
+                mode=self.config.wandb_mode, 
+                config={**asdict(self.config.train),
+                        **asdict(self.config.model),
+                        "dataset":self.dataset_name,
+                        "total_params": sum(p.numel() for p in self.model.parameters())},
             )
+            
+            resume = True # Flag that indicates that we are resuming from an existign experiment
+            
+        else:
 
-            if self.run_id is None:
-                self.run_id = wandb.run.id
+            self.global_step = 0
+            self.best_perplexity = float('inf')
+            self.patience_counter = 0
+            self.best_iteration = 0
+            wandb.init(
+                project="mintransformer",
+                name = f"{self.dataset_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                mode=self.config.wandb_mode, 
+                config={**asdict(self.config.train),
+                        **asdict(self.config.model),
+                        "dataset":self.dataset_name,
+                        "total_params": sum(p.numel() for p in self.model.parameters()),
+                        "trainable_params": sum(p.numel() for p in self.model.parameters() if p.requires_grad)})
 
+            self.run_id = wandb.run.id
+            resume = False
+        
+        self.exp_dir = Path(f"./experiments/{self.dataset_name}/{self.run_id}")
+        self.exp_dir.mkdir(parents=True, exist_ok=True)
+        (self.exp_dir / "checkpoints").mkdir(exist_ok=True)
+        (self.exp_dir / "samples").mkdir(exist_ok=True)
 
+        if not resume:
+            config_dict = {
+            'wandb_info': {
+                'run_id': self.run_id,
+                'run_name': wandb.run.name,
+                'url': wandb.run.get_url(),
+                'project': wandb.run.project,
+                'timestamp': datetime.now().isoformat()},
+            'dataset': self.dataset_name,
+            'training_config': asdict(self.config.train),
+            'model_config': asdict(self.config.model),
+            'generation_config': {
+                'temperature': self.decoder.temperature,
+                'top_p': self.decoder.top_p},
+            'model_info': {
+                'total_params': sum(p.numel() for p in self.model.parameters()),
+                'trainable_params': sum(p.numel() for p in self.model.parameters() if p.requires_grad)}}
+        
+        with open(self.exp_dir / "config.yaml", 'w') as f:
+            yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
+        
     def _evaluate(self) -> float:
 
         self.model.eval()
@@ -109,12 +140,15 @@ class Trainer:
 
         return results
 
-    def _save_checkpoint(self, checkpoint_path: str):
+    def _save_checkpoint(self):
 
+        checkpoint_path = self.exp_dir / "checkpoints" 
         print(f" Saving model ckpt to : {checkpoint_path}")
         checkpoint = {
             "global_step": self.global_step,
             "best_perplexity": self.best_perplexity,
+            "best_iteration": self.best_iteration,
+            "patience_counter": self.patience_counter,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
@@ -122,11 +156,11 @@ class Trainer:
         }
 
         torch.save(
-            checkpoint, f"{checkpoint_path}/run-{self.run_id}_best_model.pth"
+            checkpoint, f"{checkpoint_path}/best_model.pth"
         )
 
-    def load_from_checkpoint(self, checkpoint_path: str):
-
+    def _load_checkpoint(self, checkpoint_path: str):
+        
         if os.path.exists(checkpoint_path):
             print(f" Loading ckpt from : {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -142,15 +176,18 @@ class Trainer:
             self.global_step = checkpoint["global_step"]+1
             self.best_perplexity = checkpoint["best_perplexity"]
             self.run_id = checkpoint["run_id"]
+            self.best_iteration = checkpoint["best_iteration"]
+            self.patience_counter = checkpoint["patience_counter"]
+
             print(f"Resuming training from iteration {self.global_step}")
         
         else:
             
-            print(f"No checkpoint found at {checkpoint_path}")
-            return None
+            raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
 
 
-    def load_best_model(self, checkpoint_path: str):
+    def _load_best_model(self):
+        checkpoint_path = self.exp_dir / "checkpoints" 
         if os.path.exists(checkpoint_path):
             print(f" Loading ckpt from : {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -159,8 +196,7 @@ class Trainer:
             print(f"Best validation perplexity: {checkpoint['best_perplexity']:.4f}")
             return checkpoint
         else:
-            print(f"No checkpoint found at {checkpoint_path}")
-            return None
+            raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
         
     def _generate_and_log_samples(self, step, max_tokens = 200):
 
@@ -170,6 +206,7 @@ class Trainer:
                    "In a magical land far, far away"]
         
         sampled_text = f"=== Step {step} ===\n\n"
+        sampled_text += f"Temperature: {self.decoder.temperature}, Top-p: {self.decoder.top_p}\n\n"
         log_samples = []
 
         for prompt in prompts:
@@ -178,11 +215,12 @@ class Trainer:
             sampled_text += sample_text
             log_samples.append([step, prompt, generated])
 
+        
         table = wandb.Table(
         columns=["Step", "Prompt", "Generated"],
         data=log_samples)
-
-        wandb.log({"samples": table, "step": step})
+        wandb.log({"generated_samples": table,
+                   "step": step})
     
         if step % 2500 == 0 or step == self.config.train.num_iterations:
             sample_file = self.exp_dir / "samples" / f"step_{step}.txt"
@@ -195,33 +233,30 @@ class Trainer:
 
         print(f" Starting training...")
         early_stopped = False
+
         for i in range(self.config.train.num_iterations):
             self.model.train()
             batch = next(self.train_dataloader)
+            step_start = time.time()
             self.optimizer.zero_grad()
             model_logits = self.model(batch[0])
             batch_loss = cross_entropy(model_logits.view(-1, self.config.model.vocab_size), batch[1].view(-1))
             batch_loss.backward()
-
-            # compute norm of gradients
-            total_grad_norm = 0.0
-            for param in self.model.parameters():
-                if param.grad is not None:
-                    total_grad_norm += param.grad.data.norm(2).item() ** 2
-            total_grad_norm = total_grad_norm ** 0.5
-            
-            if self.do_log:
-                wandb.log({"train/batch_loss": batch_loss.item(),
-                           "train/learning_rate": self.optimizer.param_groups[0]['lr'],
-                           "train/perplexity": math.exp(batch_loss.item()),
-                           "gradients/norm_before_clip":total_grad_norm,
-                           "memory/gpu_gb":torch.cuda.memory_allocated()/1024**3}, step=self.global_step)
-                
-            clip_grad_norm_(self.model.parameters(),self.config.train.max_grad_norm)
-
+            total_grad_norm  = clip_grad_norm_(self.model.parameters(),self.config.train.max_grad_norm)
             self.optimizer.step()
-            self.scheduler.step() 
+            self.scheduler.step()
+            step_time = time.time() - step_start
+            num_tokens = batch[0].numel()
+            tokens_per_sec = num_tokens / step_time if step_time > 0 else 0
             self.global_step += 1
+              
+            wandb.log({"train/batch_loss": batch_loss.item(),
+                        "train/learning_rate": self.optimizer.param_groups[0]['lr'],
+                        "train/perplexity": math.exp(batch_loss.item()),
+                        "gradients/norm_before_clip":total_grad_norm,
+                        "memory/gpu_gb":torch.cuda.memory_allocated()/1024**3,
+                        "throughput/step_time":step_time,
+                        "throughput/tokens_per_sec":tokens_per_sec}, step=self.global_step)
 
             print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()}")
 
@@ -231,39 +266,40 @@ class Trainer:
 
                 eval_results = self._evaluate()
                 
-                if self.do_log: 
-                    wandb.log({"val/avg_perplexity": eval_results["avg_perplexity"],
-                               "val/avg_loss_per_token": eval_results["avg_val_loss"]},
-                        step=self.global_step)
+                wandb.log({"val/avg_perplexity": eval_results["avg_perplexity"],
+                        "val/avg_loss_per_token": eval_results["avg_val_loss"]},
+                    step=self.global_step)
 
                 print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()},\
                         val_loss={eval_results['avg_val_loss']}")
                 
-                if eval_results['avg_perplexity'] < self.best_perplexity :
+                self._generate_and_log_samples(self.global_step)
+                
+                if eval_results['avg_perplexity'] < self.best_perplexity:
                     perplexity_improvement = eval_results['avg_perplexity'] - self.best_perplexity
                     self.best_perplexity  = eval_results['avg_perplexity']
                     self.best_iteration = self.global_step
                     self.patience_counter = 0
                     
                     print(f"New best perpelxity: {self.best_perplexity:.4f}.")
-                    self._save_checkpoint(self.config.ckpt_dir)
-                    if self.do_log: 
-                        wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
-                               "early_stopping/best_iteration": self.best_iteration,
-                               "early_stopping/patience_counter": self.patience_counter,
-                               "early_stopping/improvement": perplexity_improvement},
-                            step=self.global_step)
+                    self._save_checkpoint()
+                    
+                    wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
+                            "early_stopping/best_iteration": self.best_iteration,
+                            "early_stopping/patience_counter": self.patience_counter,
+                            "early_stopping/improvement": perplexity_improvement},
+                        step=self.global_step)
 
                 else:
 
                     self.patience_counter += 1
                     print(f"No improvement. Patience: {self.patience_counter}/{self.patience_threshold}")
-                    if self.do_log:                                            
-                        wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
-                               "early_stopping/best_iteration": self.best_iteration,
-                               "early_stopping/patience_counter": self.patience_counter},
-                            step=self.global_step)
-                        
+                                                           
+                    wandb.log({"early_stopping/best_val_perplexity": self.best_perplexity,
+                            "early_stopping/best_iteration": self.best_iteration,
+                            "early_stopping/patience_counter": self.patience_counter},
+                        step=self.global_step)
+                    
                     if self.patience_counter >= self.patience_threshold:
                         print(f" Early stopping triggered at iteration {self.global_step}")
                         print(f" Best validation perplexity of {self.best_perplexity} at iteration {self.best_iteration}")
@@ -272,16 +308,16 @@ class Trainer:
         
         print("Training complete.")
         print("\n" + "=" * 60)
-        _ = self.load_best_model(os.path.join(self.config.ckpt_dir,f"run-{self.run_id}_best_model.pth"))
+        _ = self._load_best_model()
         print("Performing Final evaluation")
         final_eval_results = self._evaluate()
         final_perplexity = final_eval_results["avg_perplexity"]
         final_avg_val_loss_per_token = final_eval_results["avg_val_loss"]
 
         print(f"\nFinal Model Performance:")
-        print(f"  Validation Perplexity: {final_perplexity:.4f}")
-        print(f"  Validation Loss: {final_avg_val_loss_per_token:.4f}")
-        print(f"  From Iteration: {self.best_iteration}")
+        print(f" Validation Perplexity: {final_perplexity:.4f}")
+        print(f" Validation Loss: {final_avg_val_loss_per_token:.4f}")
+        print(f" From Iteration: {self.best_iteration}")
 
         perplexity_diff = abs(final_perplexity - self.best_perplexity)
         if perplexity_diff > 0.01: # check 
@@ -289,26 +325,22 @@ class Trainer:
                 f"saved best perplexity ({self.best_perplexity:.4f})")
         else:
             print(f"Final perplexity matches saved best checkpoint")
-            if self.do_log:   
-                wandb.run.summary["final/val_perplexity"] = final_perplexity
-                wandb.run.summary["final/val_loss"] = final_avg_val_loss_per_token 
-                wandb.run.summary["best_iteration"] = self.best_iteration
-                wandb.run.summary["total_iterations"] = self.global_step
+            wandb.run.summary["final/val_perplexity"] = final_perplexity
+            wandb.run.summary["final/val_loss"] = final_avg_val_loss_per_token 
+            wandb.run.summary["best_iteration"] = self.best_iteration
+            wandb.run.summary["total_iterations"] = self.global_step
 
 
         if early_stopped:
             print(f"Training stopped early at iteration {self.global_step}")
-            if self.do_log:
-                wandb.run.summary["early_stopped"] = True
-                wandb.run.summary["stopped_at_iteration"] = self.global_step
+            wandb.run.summary["early_stopped"] = True
+            wandb.run.summary["stopped_at_iteration"] = self.global_step
         else:
             print("Training completed all iterations")
-            if self.do_log:
-                wandb.run.summary["early_stopped"] = False
+            wandb.run.summary["early_stopped"] = False
            
         print("=" * 60)
-        if self.do_log:
-            wandb.finish()
+        wandb.finish()
 
         return self.model, final_eval_results
     
@@ -331,7 +363,6 @@ def train_model(args):
                                   num_iterations=args.num_iters,
                                   patience_threshold=args.patience_threshold,
                                   batch_size = args.batch_size,
-                                  resume_from_checkpoint=args.resume_from_ckpt,
                                   reset_scheduler_on_load = args.reset_sched_on_load,
                                   eval_every_n_steps=args.eval_n_steps,
                                   min_lr = 0.1*args.lr,
@@ -353,7 +384,7 @@ def train_model(args):
     config = RunConfig(model=model_config,
                        train=train_config,
                        data_dir=args.data_dir,
-                       ckpt_dir=args.ckpt_dir)
+                       wandb_mode=args.wandb_mode)
     
     # Initializing the model
     model = TransformerLM(model_config, device="cuda:0")
