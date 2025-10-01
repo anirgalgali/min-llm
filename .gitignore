@@ -1,6 +1,6 @@
 data/*
 wandb/*
-checkpoints/*
+experiments/*
 !data/.gitkeep
 !checkpoints/.gitkeep
 *.egg-info

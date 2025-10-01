@@ -5,6 +5,7 @@ PositionEmbeddingType = Literal["rope","absolute","none"]
 NormPositionType = Literal["pre", "post"]
 NormType = Literal["rms", "layer"]
 ActivationType = Literal["gelu", "relu","silu"]
+WandbModeType = Literal["online", "offline","disabled"]
 
 @dataclass
 class SelfAttentionConfig:
@@ -111,7 +112,6 @@ class TrainingConfig:
     num_iterations: int = 2500
     patience_threshold: int = 3
     batch_size: int = 512
-    resume_from_checkpoint: str = None
     reset_scheduler_on_load: bool = False
     eval_every_n_steps: int = 100
     min_lr: float = 0.0001
@@ -124,6 +124,7 @@ class RunConfig:
     model:DecoderLMConfig = field(default_factory=DecoderLMConfig)
     train:TrainingConfig = field(default_factory=TrainingConfig)
     data_dir:str = f"./data/tokenized"
-    ckpt_dir:str = f"./experiments/checkpoints"
+    resume_from_checkpoint: str = None
+    wandb_mode: WandbModeType = "online"
 
 

@@ -6,11 +6,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train causalLM on TinyStories")
 
     parser.add_argument( "--data_dir", type=str, 
-                        default="../data/tokenized/tinystories", help="Directory containing data .npy files.")
-    
-    parser.add_argument( "--ckpt_dir", type=str, 
-                        default="../experiments/tinystories/checkpoints",
-                        help="Directory to store model checkpoints.")
+                        default="./data/tokenized/tinystories", help="Directory containing data .npy files.")
     
     parser.add_argument( "--lr", type=float, 
                         default=0.001, 
@@ -64,12 +60,12 @@ def main():
                         help="Name of the Hugging Face tokenizer to use.")
     
     parser.add_argument("--temperature",type=float, 
-                    default=1.0, 
-                    help="Temperature for sotfmax sampling of text")
+                        default= 0.8, 
+                        help="Temperature for sotfmax sampling of text")
     
     parser.add_argument("--top_p",type=float, 
-                default=0.1, 
-                help="cdf threshold for nucleus sampling")
+                        default=0.9, 
+                        help="cdf threshold for nucleus sampling")
     
     parser.add_argument( "--d_model", type=int, 
                         default=512, 
@@ -110,6 +106,11 @@ def main():
     parser.add_argument( "--norm_pos", type=str, 
                         default="pre", 
                         help="position of norm layer")
+    
+    parser.add_argument( '--wandb_mode',type=str,
+                        default='online',
+                        choices=['online', 'offline', 'disabled'],
+                        help='Wandb mode: online (normal), offline (local only), disabled (no logging)')
     
 
     args = parser.parse_args()
