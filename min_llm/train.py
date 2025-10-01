@@ -283,25 +283,6 @@ class Trainer:
 
         return self.model, final_eval_results
 
-    def train_single_batch(self, X, y):
-        # This function is purely for debugging purposes. 
-        print(f" Starting training...")
-        for i in range(self.config.train.num_iterations):
-            self.model.train()
-            self.optimizer.zero_grad()
-            model_logits = self.model(X)
-            batch_loss = cross_entropy(model_logits.view(-1, self.config.model.vocab_size), y.view(-1))
-            batch_loss.backward()
-            clip_grad_norm_(self.model.parameters(),self.config.train.max_grad_norm)
-            self.optimizer.step()
-            self.scheduler.step()
-            self.global_step += 1
-            print(f"Iteration-{self.global_step}: train_loss={batch_loss.item()}")
-
-        print("Training complete.")
-
-
-
 
 def run(args):
 
@@ -400,106 +381,7 @@ def run(args):
 
     final_model, final_eval_results = trainer.train()
 
-
-def run_test(args):
-
-    ## Loading data from disk
-
-    try:
-       data_train = np.load(os.path.join(args.data_dir,'train.npy'),mmap_mode='r')
-    except FileNotFoundError as e:
-        return
-
-    try:
-       data_val = np.load(os.path.join(args.data_dir,'validation.npy'),mmap_mode='r')
-    except FileNotFoundError as e:
-        return
-    
-    print("Mapped data from disk")
-
-   ## Creating the configs
-    train_config = TrainingConfig(learning_rate=args.lr,
-                                  weight_decay=args.weight_decay,
-                                  beta1 = args.beta1,
-                                  beta2 = args.beta2,
-                                  num_iterations=args.num_iters,
-                                  batch_size = args.batch_size,
-                                  resume_from_checkpoint=args.resume_from_ckpt,
-                                  reset_scheduler_on_load = args.reset_sched_on_load,
-                                  eval_every_n_steps=args.eval_n_steps,
-                                  min_lr = 0.1*args.lr,
-                                  num_warmup_steps = int(args.frac_warmup_steps * args.num_iters),
-                                  num_cosine_steps = int(args.frac_cosine_steps * args.num_iters))
-    
-    pprint.pprint(train_config)
-    
-    model_config = DecoderLMConfig(d_model=args.d_model,
-                                   vocab_size = args.vocab_size,
-                                   context_length = args.ctx_len,
-                                   n_layers = args.n_layers,
-                                   pos_embedding_type=args.pos_embed,
-                                   dropout = args.dropout,
-                                   transformer=TransformerConfig(norm_position = args.norm_pos,
-                                                                 norm_type = args.norm_type,
-                                                                 attn = SelfAttentionConfig(
-                                                                     n_heads=args.n_heads, 
-                                                                     dropout_attn=args.dropout_attn))) 
-    pprint.pprint(model_config)
-
-    config = RunConfig(model=model_config,
-                       train = train_config,
-                       data_dir = args.data_dir,
-                       ckpt_dir = args.ckpt_dir)
-    
-    # Initializing the model
-    model = TransformerLM(model_config, device="cuda:0")
-
-    train_loader = get_batch(data_train, 
-                             batch_size=train_config.batch_size,
-                             context_length=model_config.context_length, 
-                             device = "cuda:0")
-
-    val_loader = get_batch(data_val, 
-                            batch_size=train_config.batch_size,
-                            context_length=model_config.context_length, 
-                            device = "cuda:0")
-
-
-    if config.train.weight_decay is not None:
-
-        optimizer = AdamW(
-            model.parameters(),
-            weight_decay=config.train.weight_decay,
-            lr=config.train.learning_rate,
-        )
-    
-    else:
-
-        optimizer = AdamW(
-            model.parameters(),
-            weight_decay= 0.0,        # reduces to standard adam
-            lr=config.train.learning_rate)
-
-
-
-    lr_scheduler = get_cosine_schedule_with_warmup(optimizer,
-                                                   max_lr = train_config.learning_rate,
-                                                   min_lr = train_config.min_lr,
-                                                   num_warmup_steps = train_config.num_warmup_steps,
-                                                   num_cosine_steps = train_config.num_cosine_steps)
-
-    trainer = Trainer(
-        model = model,
-        optimizer = optimizer,
-        lr_scheduler = lr_scheduler,
-        train_dataloader=train_loader,
-        val_dataloader=val_loader,
-        config=config, do_log = False)
-
-    batch_test = next(train_loader)
-    print(batch_test[0].device)
-    print(batch_test[1].device)
-    trainer.train_single_batch(batch_test[0], batch_test[1])
+    return final_model, final_eval_results
 
 
 if __name__ == "__main__":
@@ -534,8 +416,8 @@ if __name__ == "__main__":
                         help="number of training iterations")
     
     parser.add_argument( "--patience_threshold", type=int, 
-                    default=3, 
-                    help="patience for early stopping")
+                        default=3, 
+                        help="patience for early stopping")
     
     parser.add_argument( "--batch_size", type=int,
                         default=512, 
@@ -558,48 +440,48 @@ if __name__ == "__main__":
     
     parser.add_argument( "--frac_cosine_steps", type=float, 
                         default=0.95, 
-                        help="fraction of traning steps to use for warmup + cosine rate scheduling")
+                        help="fraction of traning steps to use for warmup + cosine schedule")
     
     parser.add_argument( "--d_model", type=int, 
                         default=512, 
                         help="model dimensionality")
     
     parser.add_argument( "--vocab_size", type=int, 
-                    default=50257, 
-                    help="size of vocabulary (depends on tokenizer)")
+                        default=50257, # standard for gpt-2 tokenizer
+                        help="size of vocabulary (depends on tokenizer)")
     
     parser.add_argument( "--ctx_len", type=int, 
                         default=256, 
                         help="maximum context length")
     
     parser.add_argument( "--n_layers", type=int, 
-                default=4, 
-                help="number of layers")
+                        default=4, 
+                        help="number of layers")
     
     parser.add_argument( "--n_heads", type=int, 
-            default=16, 
-            help="number of attention heads")
+                        default=16, 
+                        help="number of attention heads")
     
     parser.add_argument( "--pos_embed", type=str, 
-            default="rope", 
-            help="type of position embedding")
+                        default="rope", 
+                        help="type of position embedding")
     
     parser.add_argument( "--dropout", type=float, 
-        default=0.1, 
-        help="dropout")
+                        default=0.1, 
+                        help="dropout")
     
     parser.add_argument( "--dropout_attn", type=float, 
-        default=0.1, 
-        help="dropout for self attention")
+                        default=0.1, 
+                        help="dropout for self attention")
     
     parser.add_argument( "--norm_type", type=str, 
-        default="rms", 
-        help="type of nomr layer")
+                        default="rms", 
+                        help="type of nomr layer")
     
     parser.add_argument( "--norm_pos", type=str, 
-        default="pre", 
-        help="position of norm layer")
+                        default="pre", 
+                        help="position of norm layer")
     
 
     args = parser.parse_args()
-    run(args)
+    final_model, final_eval_results = run(args)

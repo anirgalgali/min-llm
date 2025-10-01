@@ -45,7 +45,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--output_dir", 
         type=str, 
-        default="./src/mintransformer/data/tokenized/tinystories", 
+        default="./data/tokenized/tinystories", 
         help="Directory to save the output .npy files."
     )
     parser.add_argument(

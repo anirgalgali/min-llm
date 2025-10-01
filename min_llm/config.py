@@ -123,7 +123,7 @@ class TrainingConfig:
 class RunConfig:
     model:DecoderLMConfig = field(default_factory=DecoderLMConfig)
     train:TrainingConfig = field(default_factory=TrainingConfig)
-    data_dir:str = f"./src/mintransformer/data/tokenized"
-    ckpt_dir:str = f"./src/mintransformer/checkpoints"
+    data_dir:str = f"./data/tokenized"
+    ckpt_dir:str = f"./experiments/checkpoints"
 
 
