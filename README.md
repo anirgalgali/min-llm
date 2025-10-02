@@ -33,6 +33,7 @@ For development (including testing dependencies):
 pip install -e ".[dev]"
 ```
 **Requirements**
+
 Python 3.11
 PyTorch >= 2.0
 transformers >= 4.0.0 (for tokenization and datasets)
