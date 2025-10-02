@@ -32,14 +32,14 @@ For development (including testing dependencies):
 ```bash
 pip install -e ".[dev]"
 ```
-**Requirements**
+**Requirements:**
 
-Python 3.11
-PyTorch >= 2.0
-transformers >= 4.0.0 (for tokenization and datasets)
-einops >= 0.6.0 (for easy-to-read einsums)
-wandb >= 0.12.0 (for training MLOps)
-See `pyproject.toml` for complete dependency list
+- Python 3.11
+- PyTorch >= 2.0
+- transformers >= 4.0.0 (for tokenization and datasets)
+- einops >= 0.6.0 (for easy-to-read einsums)
+- wandb >= 0.12.0 (for training MLOps)
+- See `pyproject.toml` for complete dependency list
 
 
  
