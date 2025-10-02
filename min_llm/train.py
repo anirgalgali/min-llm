@@ -194,6 +194,7 @@ class Trainer:
             self.model.load_state_dict(checkpoint["model_state_dict"])
             print(f"Loaded best model weights from iteration {checkpoint['global_step']}")
             print(f"Best validation perplexity: {checkpoint['best_perplexity']:.4f}")
+            self.global_step = checkpoint["global_step"]+1
             return checkpoint
         else:
             raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
@@ -205,7 +206,7 @@ class Trainer:
                    "There once was a little boy",
                    "In a magical land far, far away"]
         
-        sampled_text = f"=== Step {step} ===\n\n"
+        sampled_text = f"=== Step {step} ===\n"
         sampled_text += f"Temperature: {self.decoder.temperature}, Top-p: {self.decoder.top_p}\n\n"
         log_samples = []
 
@@ -219,8 +220,7 @@ class Trainer:
         table = wandb.Table(
         columns=["Step", "Prompt", "Generated"],
         data=log_samples)
-        wandb.log({"generated_samples": table,
-                   "step": step})
+        wandb.log({"generated_samples": table}, step = step)
     
         if step % 2500 == 0 or step == self.config.train.num_iterations:
             sample_file = self.exp_dir / "samples" / f"step_{step}.txt"
