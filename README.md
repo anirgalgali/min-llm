@@ -37,6 +37,7 @@ pip install -e ".[dev]"
 - Python 3.11
 - PyTorch >= 2.0
 - transformers >= 4.0.0 (for tokenization and datasets)
+- numpy >= 2.0.0 (for data handling)
 - einops >= 0.6.0 (for easy-to-read einsums)
 - wandb >= 0.12.0 (for training MLOps)
 - See `pyproject.toml` for complete dependency list

@@ -7,11 +7,11 @@ build-backend = "setuptools.build_meta"
 name = "min-llm"
 version = "0.1.0"
 description = "A minimal toolbox for pretraining transformer-based LLMs from scratch"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0.0",
     "transformers>=4.0.0",
-    "numpy>=1.20.0",
+    "numpy>=2.0.0",
     "einops>=0.6.0",
     "wandb>=0.12.0",
     "datasets>=4.0.0",
